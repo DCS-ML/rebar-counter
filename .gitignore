@@ -1,0 +1,4 @@
+data/
+models/
+*.mp4
+.DS_Store
