@@ -1,9 +1,8 @@
-
 from __future__ import annotations
 
 import cv2
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict, Set
 
 __all__ = ["RowManager"]
 
@@ -18,18 +17,19 @@ _DICTS = [
 
 # ---------------------------------------------------------------- RowManager ---
 class RowManager:
-    """Определяет текущий слой арматуры и отдаёт его полигон‑коридор.
-
-    Аргументы:
-        rows (int):   сколько «поясов» ArUco‑маркеров ожидаем (M).
-        ids_per_row:  длина диапазона ID, отведённая каждому поясу (по умолчанию 20).
-    """
 
     # --------------------------------------------------- ctor ------
-    def __init__(self, rows: int, ids_per_row: int = 20):
+    def __init__(self, rows: int, ids_per_row: int = 20, confirm: int = 3):
         self.marker_rows: int = rows              # «поясов» тегов (M)
         self.rebar_rows: int = rows + 1           # слоёв арматуры  (R = M + 1)
         self.ids_per_row: int = ids_per_row
+
+        # ---- анти‑шум ----
+        if confirm < 1:
+            raise ValueError("confirm must be ≥ 1")
+        self._confirm: int = confirm
+        self._streaks: Dict[int, int] = {}        # id → текущая длина серии
+        self._accepted: Set[int] = set()          # подтверждённые маркеры
 
         # ---- кэш детектора ----
         self._det = None
@@ -123,7 +123,9 @@ class RowManager:
         return self._current_rebar_row
 
     def polygon_for_frame(self, gray):
-        """Главный метод: возвращает (poly, corners, ids) для текущего кадра."""
+        """Главный метод: возвращает `(poly, corners, ids)` для текущего кадра.
+        Строго сохраняет исходное поведение, добавляя лишь фильтр «3 кадра подряд».
+        """
         if self._frame_shape is None:
             self._frame_shape = gray.shape[:2]
 
@@ -131,11 +133,28 @@ class RowManager:
         if ids is None or len(ids) == 0:
             return None, corners, ids
 
-        # --- сброс точек и сбор новых ---
+        # ---- анти‑шум подтверждение ----
+        detected_ids = ids.flatten().tolist()
+        for mid in detected_ids:
+            mid = int(mid)
+            if mid in self._accepted:
+                continue
+            self._streaks[mid] = self._streaks.get(mid, 0) + 1
+            if self._streaks[mid] >= self._confirm:
+                self._accepted.add(mid)
+        # сбрасываем streak тем, кто пропал
+        for mid in list(self._streaks.keys()):
+            if mid not in detected_ids and mid not in self._accepted:
+                self._streaks[mid] = 0
+
+        # --- сброс точек и сбор новых только от подтверждённых ---
         self._row_points = [[] for _ in range(self.marker_rows)]
         rows_visible = set()
         for c, mid in zip(corners, ids.flatten()):
-            mr = self._marker_row(int(mid))
+            mid = int(mid)
+            if mid not in self._accepted:
+                continue  # маркер ещё не прошёл проверку
+            mr = self._marker_row(mid)
             rows_visible.add(mr)
             self._row_points[mr].extend([tuple(p) for p in self._bottom_two(c)])
 
@@ -145,8 +164,9 @@ class RowManager:
         # --- выбор слоя арматуры ---
         if rows_visible == {self.marker_rows - 1}:  # один, и это верхний пояс
             self._current_rebar_row = self.rebar_rows - 1
-        else:
+        elif rows_visible:
             self._current_rebar_row = max(rows_visible)
+        # else: оставляем прежнее значение (ни одного подтверждённого маркера)
 
         return (
             self._row_polys[self._current_rebar_row],

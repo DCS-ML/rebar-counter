@@ -10,7 +10,7 @@ class RebarTracker:
 
     def __init__(self, weights: str,
                  rebar_name="rebar", rebar_id: Optional[int]=None,
-                 conf=.25, iou=.5, tracker_cfg="bytetrack.yaml"):
+                 conf=.4, iou=.5, tracker_cfg="bytetrack.yaml"):
         self.model = YOLO(weights)
         self.names: Dict[int,str] = self.model.names
         self.rebar_cls = rebar_id if rebar_id is not None else self._cls(rebar_name)

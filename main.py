@@ -8,6 +8,7 @@ from detection import RebarTracker
 from row_manager import RowManager
 from rebar_validator import RebarValidator
 from visualizer import visualize
+from auto_row_detector import detect_marker_rows
 
 
 # ---------------------------------------------------------------------- args --
@@ -17,7 +18,7 @@ def parse_args():
     p.add_argument("--video", required=True)
     p.add_argument("--weights", required=True)
     p.add_argument("--rebar_id", type=int)
-    p.add_argument("--rows", type=int, default=5,
+    p.add_argument("--rows", type=int,
                    help="сколько рядов маркеров (по 20 ID каждый)")
     p.add_argument("--stable_frames", type=int, default=3,
                    help="сколько подряд кадров трек должен быть внутри ряда,\n                         чтобы считаться арматуриной")
@@ -42,7 +43,15 @@ def main():
     )
 
     detector = RebarTracker(args.weights, rebar_id=args.rebar_id)
-    row_mgr = RowManager(rows=args.rows)
+    
+    if args.rows is None:
+        rows, _ = detect_marker_rows(args.video)
+    else:
+        rows = args.rows
+    
+    print(f"Rows: {rows}")
+    
+    row_mgr = RowManager(rows=rows)
     validator = RebarValidator(required=args.stable_frames)
 
     cur_row_ids: Set[int] = set()
