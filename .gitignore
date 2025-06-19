@@ -1,4 +1,6 @@
 data/
 models/
 *.mp4
+*.jpg
+*.png
 .DS_Store
