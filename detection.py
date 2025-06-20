@@ -10,12 +10,13 @@ class RebarTracker:
 
     def __init__(self, weights: str,
                  rebar_name="rebar", rebar_id: Optional[int]=None,
-                 conf=.4, iou=.5, tracker_cfg="bytetrack.yaml"):
+                 conf=.4, iou=.5, imgsz=1280, max_det=5000, tracker_cfg="bytetrack.yaml"):
         self.model = YOLO(weights)
         self.names: Dict[int,str] = self.model.names
         self.rebar_cls = rebar_id if rebar_id is not None else self._cls(rebar_name)
         self.conf, self.iou, self.tr_cfg = conf, iou, tracker_cfg
         self.clahe = cv2.createCLAHE(4.0, (8,8))
+        self.imgsz, self.max_det = imgsz, max_det
 
     def _cls(self,name):
         for i,n in self.names.items():
@@ -29,7 +30,7 @@ class RebarTracker:
         return cv2.cvtColor(g,cv2.COLOR_GRAY2BGR)
 
     def track(self,f)->List[Tuple[int,np.ndarray,float]]:
-        r=self.model.track(self._prep(f),conf=self.conf,iou=self.iou,
+        r=self.model.track(self._prep(f), imgsz=self.imgsz, max_det=self.max_det, conf=self.conf,iou=self.iou,
                            tracker=self.tr_cfg,persist=True,verbose=False)[0]
         if r.boxes.id is None: return []
         out=[]
